@@ -1,0 +1,108 @@
+;; tracker/power_log.prn -- Hearthstone Power.log line parser (HRIP tracker, PARENA-native).
+;; Pure decision/parsing logic: no I/O, no globals. Every allocation goes through the caller's
+;; Arena. The C host (host.c) only feeds lines in and reads LogEvent fields out.
+;;
+;; FORMAT STATUS: written from the documented HearthSim log shape, NOT yet validated against a
+;; real Power.log from the founder's install -- tests/fixtures are synthetic. Treat as a draft
+;; until a real log is diffed in (tracker/README.md).
+
+(module hs/power-log)
+(import string)
+(export parse-line find-from read-int LogEvent)
+
+;; event kinds (I32 tags, mirrored in host.c): 0 none, 1 TAG_CHANGE, 2 SHOW_ENTITY, 3 FULL_ENTITY, 4 CREATE_GAME
+
+(defstruct LogEvent
+  (kind      : I32)
+  (entity-id : I32)
+  (tag       : String @ Region)
+  (value     : String @ Region)
+  (card-id   : String @ Region))
+
+;; does `needle` occur in `s` at index `i`?
+(defn match-at? [(s : String @ Region) (needle : String @ Region) (i : I32) (nl : I32)]
+  : Bool
+  (loop [j 0]
+    (if (>= j nl)
+      true
+      (if (= (string/char-at s (+ i j)) (string/char-at needle j))
+        (recur (+ j 1))
+        false))))
+
+;; index of the first occurrence of `needle` in `s` at or after `start`, or -1.
+(defn find-from [(s : String @ Region) (needle : String @ Region) (start : I32)]
+  : I32
+  (let [sl (string/length s)
+        nl (string/length needle)]
+    (loop [i start]
+      (if (> (+ i nl) sl)
+        (- 0 1)
+        (if (match-at? s needle i nl)
+          i
+          (recur (+ i 1)))))))
+
+;; end index of the token starting at `start`: stops at space, ']' or end of string.
+(defn token-end [(s : String @ Region) (start : I32)]
+  : I32
+  (let [sl (string/length s)]
+    (loop [i start]
+      (if (>= i sl)
+        sl
+        (let [c (string/char-at s i)]
+          (if (or (= c 32) (= c 93))
+            i
+            (recur (+ i 1))))))))
+
+;; value of `key` (e.g. "tag=") in `s`, or "" when absent.
+(defn value-of [(s : String @ Region) (key : String @ Region) (dest : Arena @ Region)]
+  : String @ Region
+  (let [at (find-from s key 0)]
+    (if (< at 0)
+      ""
+      (let [start (+ at (string/length key))]
+        (string/substring s start (token-end s start) dest)))))
+
+;; non-negative decimal at `start`, or -1 when no digit is there.
+(defn read-int [(s : String @ Region) (start : I32)]
+  : I32
+  (let [sl (string/length s)]
+    (loop [i start n 0 any false]
+      (if (and (< i sl) (string/is-digit? (string/char-at s i)))
+        (recur (+ i 1) (+ (* n 10) (- (string/char-at s i) 48)) true)
+        (if any n (- 0 1))))))
+
+;; first non-negative result of `a`, else `b`
+(defn first-id [(a : I32) (b : I32)] : I32
+  (if (>= a 0) a b))
+
+;; entity id: numeric "Entity=NN", bracketed "id=NN", or FULL_ENTITY's " ID=NN" (leading space so
+;; it never matches inside "CardID="; found by tests/test_power_log.c). -1 when none.
+(defn entity-id-of [(s : String @ Region)]
+  : I32
+  (let [c (find-from s "Entity=" 0)
+        a (find-from s "id=" 0)
+        b (find-from s " ID=" 0)
+        ce (if (>= c 0) (read-int s (+ c 7)) (- 0 1))
+        ae (if (>= a 0) (read-int s (+ a 3)) (- 0 1))
+        be (if (>= b 0) (read-int s (+ b 4)) (- 0 1))]
+    (first-id ce (first-id ae be))))
+
+(defn kind-of [(s : String @ Region)]
+  : I32
+  (if (>= (find-from s "TAG_CHANGE" 0) 0)
+    1
+    (if (>= (find-from s "SHOW_ENTITY" 0) 0)
+      2
+      (if (>= (find-from s "FULL_ENTITY" 0) 0)
+        3
+        (if (>= (find-from s "CREATE_GAME" 0) 0)
+          4
+          0)))))
+
+(defn parse-line [(s : String @ Region) (dest : Arena @ Region)]
+  : LogEvent @ Region
+  {:kind      (kind-of s)
+   :entity-id (entity-id-of s)
+   :tag       (value-of s "tag=" dest)
+   :value     (value-of s "value=" dest)
+   :card-id   (value-of s "CardID=" dest)})

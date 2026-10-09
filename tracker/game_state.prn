@@ -1,0 +1,49 @@
+;; tracker/game_state.prn -- folds parsed Power.log events into a running game summary.
+;; v0 scope (honest): counters + turn + game-complete only. Per-entity zone tracking (hand/deck/
+;; board/graveyard) needs a keyed store and comes next, once a real log pins down the tag values.
+
+(module hs/game-state)
+(import string)
+(import hs/power-log)
+(export apply-event fold-text new-state GameState)
+
+(defstruct GameState
+  (events      : I32)   ;; recognised events seen
+  (entities    : I32)   ;; FULL_ENTITY count
+  (played      : I32)   ;; TAG_CHANGE tag=ZONE value=PLAY
+  (turn        : I32)   ;; last tag=TURN value
+  (complete    : I32))  ;; 1 once tag=STATE value=COMPLETE
+
+(defn new-state [] : GameState @ Region
+  {:events 0 :entities 0 :played 0 :turn 0 :complete 0})
+
+(defn apply-event [(st : GameState @ Region) (ev : LogEvent @ Region)]
+  : GameState @ Region
+  (let [k (get-field ev :kind)
+        tg (get-field ev :tag)
+        vl (get-field ev :value)
+        is-tc (= k 1)
+        is-full (= k 3)]
+    {:events   (if (> k 0) (+ (get-field st :events) 1) (get-field st :events))
+     :entities (if is-full (+ (get-field st :entities) 1) (get-field st :entities))
+     :played   (if (and is-tc (and (string/str-eq? tg "ZONE") (string/str-eq? vl "PLAY")))
+                 (+ (get-field st :played) 1)
+                 (get-field st :played))
+     :turn     (if (and is-tc (string/str-eq? tg "TURN"))
+                 (power-log/read-int vl 0)
+                 (get-field st :turn))
+     :complete (if (and is-tc (and (string/str-eq? tg "STATE") (string/str-eq? vl "COMPLETE")))
+                 1
+                 (get-field st :complete))}))
+
+;; fold every newline-terminated line of `text` into `st`. A trailing partial line (no newline
+;; yet -- the game is still writing it) is NOT consumed; the host re-feeds it next poll.
+;; Returns the new state; use consumed-len below to learn how many bytes were used.
+(defn fold-text [(text : String @ Region) (st : GameState @ Region) (dest : Arena @ Region)]
+  : GameState @ Region
+  (loop [pos 0 cur st]
+    (let [nl (power-log/find-from text "\n" pos)]
+      (if (< nl 0)
+        cur
+        (recur (+ nl 1)
+               (apply-event cur (power-log/parse-line (string/substring text pos nl dest) dest)))))))
