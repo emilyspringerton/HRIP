@@ -6,6 +6,7 @@
 ;; exact duplicates (verified on a real log).
 ;;
 ;; Fact kinds: 1 CARD  (a=entity, s=card id)        2 PLAY (a=entity, b=player, c=turn)
+;;             (CARD c = turn it was revealed in; PLAY s = card id known at play start)
 ;;             3 ZONE  (a=entity, c=turn, s=zone)   4 CTRL (a=entity, b=player)
 ;;             5 TURN  (a=turn number)
 
@@ -103,7 +104,7 @@
   : GameState @ Region
   (let [s1 (with-cur st id)]
     (if (> (string/length card) 0)
-      (push-fact s1 1 id 0 0 card game)
+      (push-fact s1 1 id 0 (get-field st :turn) card game)
       s1)))
 
 ;; payload = the line text after "... - ", leading spaces removed.
@@ -129,8 +130,8 @@
                 id (ent-id p (+ e 8))
                 pl (power-log/read-int p (+ (power-log/find-from p " player=" 0) 8))
                 card (power-log/value-of p "cardId=" scratch)
-                s1 (push-fact st 2 id pl (get-field st :turn) "" game)]
-            (if (> (string/length card) 0) (push-fact s1 1 id 0 0 card game) s1))
+                s1 (push-fact st 2 id pl (get-field st :turn) card game)]
+            (if (> (string/length card) 0) (push-fact s1 1 id 0 (get-field st :turn) card game) s1))
           (if (power-log/at? p "TAG_CHANGE Entity=" 0)
             (let [tag (power-log/value-of p "tag=" scratch)
                   val (power-log/value-of p "value=" scratch)
@@ -277,6 +278,25 @@
 (defn num [(n : I32) (dest : Arena @ Region)] : String @ Region
   (string/i32-to-string n dest))
 
+;; number of PLAY blocks by `player` whose card id was already known when the play started
+;; (the local client knows its own card ids; the opponent's show blank until revealed).
+(defn known-plays [(facts : &(Vec Fact)) (player : I32)] : I32
+  (let [n (vec/len facts)]
+    (loop [i 0 c 0]
+      (if (>= i n)
+        c
+        (let [f (deref (vec/get facts i))]
+          (if (and (= (get-field f :kind) 2) (= (get-field f :b) player)
+                   (> (string/length (get-field f :s)) 0))
+            (recur (+ i 1) (+ c 1))
+            (recur (+ i 1) c)))))))
+
+;; the local player (1 or 2); 0 if undecidable (e.g. no plays yet).
+(defn me-of [(facts : &(Vec Fact))] : I32
+  (let [a (known-plays facts 1)
+        b (known-plays facts 2)]
+    (if (> a b) 1 (if (> b a) 2 0))))
+
 ;; entities: every revealed card, once, with owner and the zone it first appeared in.
 ;; ("DECK"/"HAND" first zone = part of that player's deck; PLAY/SETASIDE... = created by effects.)
 (defn entities-json [(facts : &(Vec Fact)) (dest : Arena @ Region)] : String @ Region
@@ -293,7 +313,9 @@
                           (cat (cat "{\"id\":" (num id dest) dest)
                             (cat (cat ",\"player\":" (num (player-of facts id) dest) dest)
                               (cat (cat ",\"card\":\"" (card-of facts id) dest)
-                                (cat (cat "\",\"zone0\":\"" (first-zone-of facts id) dest) "\"}" dest)
+                                (cat (cat "\",\"zone0\":\"" (first-zone-of facts id) dest)
+                                     (cat (cat "\",\"t\":" (num (get-field f :c) dest) dest) "}" dest)
+                                     dest)
                                 dest)
                               dest)
                             dest)
@@ -354,7 +376,9 @@
                             (cat (cat "\",\"result1\":" (num (get-field st :result1) dest) dest)
                                  (cat (cat ",\"result2\":" (num (get-field st :result2) dest) dest)
                                       (cat (cat ",\"turns\":" (num (get-field st :turn) dest) dest)
-                                           (cat ",\"complete\":" (num (get-field st :complete) dest) dest)
+                                           (cat (cat ",\"complete\":" (num (get-field st :complete) dest) dest)
+                                                (cat ",\"me\":" (num (me-of &(get-field st :facts)) dest) dest)
+                                                dest)
                                            dest)
                                       dest)
                                  dest)

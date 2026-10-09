@@ -12,8 +12,8 @@ build/tracker <Power.log> [--once]
 ## Record shape
 ```
 {"game_type":"GT_RANKED","format":"FT_STANDARD","player1":"…","player2":"…",
- "result1":1,"result2":2,"turns":25,"complete":1,          # result: 1 won, 2 lost, 3 tied, 0 unknown
- "entities":[{"id":28,"player":1,"card":"CORE_WON_141","zone0":"DECK"}, …],
+ "result1":1,"result2":2,"turns":25,"complete":1,"me":1,   # result: 1 won, 2 lost, 3 tied, 0 unknown; me = local player slot (0 undecidable)
+ "entities":[{"id":28,"player":1,"card":"CORE_WON_141","zone0":"DECK","t":0}, …],
  "timeline":[["t",turn], ["z",turn,entity,player,card,zone], ["p",turn,entity,player,card], …]}
 ```
 - `entities`: every card that was *revealed*, once, with its owner and the zone it first appeared in.
@@ -46,3 +46,9 @@ slot); abandoned games (next `CREATE_GAME` with no `STATE=COMPLETE`) emit `compl
   DEADWEIGHT match viewer). Windows build and the overlay UI are untested/unbuilt.
 - Generated PARENA code copies structs by value on the stack (largest frame ~370 B, build limit
   `-Wframe-larger-than=512`); the host itself keeps no stack buffers.
+
+## `me` (local player)
+Undrawn deck cards are never logged, so there is no "whole deck at start" signal. Instead: the
+local client knows its own card ids, so the `BLOCK_START ... cardId=` of the player's own plays is
+filled in while the opponent's is blank until revealed. `me` = the slot with more known-id plays
+(correct on all 5 real games; 0 when a game has no plays yet).
