@@ -114,3 +114,31 @@ Card-relevant strings found in the payload:
   temp file, then reading it back by line with `more +N | find /n /v ""`. Note that `more +N` starts at
   line N+1, not N. The exec output cap is 48 KB, so long files need several reads. This is slow.
 - Temp files created on the Windows machine during the spike were removed.
+
+## Update 2026-10-09 — `dbf.unity3d` decoded (supersedes "Next steps" above)
+
+The 44 MB `dbf.unity3d` reached the IDUNA pod via Drive slurp (`/app/var/drive-slurp/*-dbf.unity3d`,
+44,314,879 bytes, size matches the install). Decoded end to end with a throwaway Python spike
+(`spike/unityfs.py` → `serialized.py` → `dbf_decode.py`, pure stdlib, own LZ4 block decoder):
+
+- **Container**: UnityFS v8, flags `0x243` (LZ4HC, pad before data). 1,056 LZ4 blocks → one 138,321,544-byte
+  SerializedFile node. One extra rule vs the carddef sample: with `0x200` set, the data region is 16-byte
+  aligned *after* blocks-info.
+- **SerializedFile**: v22, platform 19, 215 types, 427 objects. Each DBF table is **one MonoBehaviour** whose
+  type tree is `Records: Array<XxxDbfRecord>`; 213 are MonoScripts. Type trees are embedded, so no external
+  type info is needed. Unity common-string indices appear in node names and are not needed for decoding
+  (structure + size is enough).
+- **Tables that matter**: `CardDbfRecord` (36,022), `CardTagDbfRecord` (260,954), `CardSetDbfRecord` (60).
+- **Card fields**: `m_ID` **is the dbf_id** (100 = `NEW1_034` Huffer; 893 = `HERO_07` Gul'dan; 2883 = Reno
+  Jackson). `m_noteMiniGuid` = string card id. `m_name` / `m_textInHand` are `DbfLocValue`
+  `{m_locValues: string[14], m_locId}`, locale order enUS, deDE, esES, esMX, frFR, itIT, jaJP, koKR, plPL,
+  ptBR, ruRU, thTH, zhCN, zhTW.
+- **Stats are tags** (`CardTagDbfRecord{m_cardId,m_tagId,m_tagValue}`): 48 cost, 47 attack, 45 health,
+  199 class, 202 card type, 203 rarity. Class ids: 1 DK, 2 Druid, 3 Hunter, 4 Mage, 5 Paladin, 6 Priest,
+  7 Rogue, 8 Shaman, 9 Warlock, 10 Warrior, 12 Neutral, 14 DH.
+- **Known gaps**: `card_set` is blank (tag 183 absent for the sampled cards; set membership lives elsewhere,
+  likely `CardSetTiming`). Some card_type ids are unmapped (e.g. 23). `text` is raw markup (`<b>`, `$`, `#`).
+  Not diffed against HearthstoneJSON yet (HRIP-05).
+- **Used for real**: the extracted 36,022-card table was loaded into IDUNA's `hs_cards` via
+  `IDUNA/cmd/hs-cards-import` (IDUNA `e32c381`), resolving the existing WOTAN decks. This is a one-off,
+  not the shipped HRIP path; the PARENA port (HRIP-02/03) is still the product.
