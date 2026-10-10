@@ -9,7 +9,9 @@
  *   - bounded: a line longer than the buffer is dropped and counted.
  * Built with -Wframe-larger-than=256 so a stray stack buffer fails the build.
  *
- * usage: tracker <Power.log> [--once]   prints one JSON object per finished game.
+ * usage: tracker <Power.log> [--once|--live]
+ *   prints one JSON object per finished game. --once reads to EOF and exits; --live is --once plus
+ *   one more object for a game still in progress at EOF ("complete":0).
  */
 #ifndef PARENA_NO_GRAPHICS
 #define PARENA_NO_GRAPHICS
@@ -113,7 +115,8 @@ static size_t poll_once(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    int once = (argc > 2 && strcmp(argv[2], "--once") == 0);
+    int live = (argc > 2 && strcmp(argv[2], "--live") == 0);
+    int once = live || (argc > 2 && strcmp(argv[2], "--once") == 0);
     if (argc < 2) { fprintf(stderr, "usage: %s <Power.log> [--once]\n", argv[0]); return 2; }
     start_game();
     for (;;) {
@@ -121,6 +124,7 @@ int main(int argc, char **argv) {
         if (once && n == 0) break;
         if (n == 0) sleep_ms(500);
     }
+    if (live && st.started && st.complete == 0) emit_game();   /* game still running at EOF */
     if (dropped) fprintf(stderr, "tracker: %u oversize lines dropped\n", dropped);
     return 0;
 }
