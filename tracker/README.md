@@ -67,3 +67,12 @@ Also, at login, every deck ("Deck Contents Received", name + id + deck code). So
 (IDUNA already has the decoder), map dbf ids to card ids via `hs_cards.card_id`, and
 `cards left = deck - own deck-origin entities that left DECK`. Verified live on a game in progress.
 (An earlier note here said the logs carry no decklist; that was wrong: `Power.log` doesn't, `Decks.log` does.)
+
+## Hearthstone's 10 MB log cap (found 2026-10-10)
+Hearthstone stops writing `Power.log` at ~10,000 KiB per session (about 2-3 games); after that every
+log-based tracker silently freezes until the game is restarted. Three real sessions ended at
+10,243,664 / 10,247,587 / 10,253,145 bytes. The fix is one line in `client.config` next to
+`Hearthstone.exe`: `FileSizeLimit.Int=-1` (HDT and Firestone write the same key). Truncating the log
+does not work (the game keeps its write offset and leaves a sparse file). The WOTAN uplink
+(IDUNA `internal/http/handlers/hs_live.go`) applies this itself, reports it, and warns when the log is
+near/at the cap; any other client built on this tracker must do the same.
