@@ -291,11 +291,36 @@
             (recur (+ i 1) (+ c 1))
             (recur (+ i 1) c)))))))
 
-;; the local player (1 or 2); 0 if undecidable (e.g. no plays yet).
+;; non-HERO deck-origin cards of `player` revealed by turn 1 (the opening hand: only the local
+;; client sees its own hand; the opponent's stays hidden until played).
+(defn opening-count [(facts : &(Vec Fact)) (player : I32)] : I32
+  (let [n (vec/len facts)]
+    (loop [i 0 c 0]
+      (if (>= i n)
+        c
+        (let [f (deref (vec/get facts i))
+              id (get-field f :a)]
+          (if (and (= (get-field f :kind) 1) (<= (get-field f :c) 1)
+                   (= (first-index facts 1 id) i)
+                   (not (power-log/at? (get-field f :s) "HERO_" 0))
+                   (not (power-log/at? (get-field f :s) "TIME_EVENT" 0))
+                   (string/str-eq? (first-zone-of facts id) "DECK")
+                   (= (player-of facts id) player))
+            (recur (+ i 1) (+ c 1))
+            (recur (+ i 1) c)))))))
+
+;; the local player (1 or 2): opening-hand reveals first, known-id plays as the fallback; 0 if
+;; undecidable (nothing revealed yet).
 (defn me-of [(facts : &(Vec Fact))] : I32
-  (let [a (known-plays facts 1)
-        b (known-plays facts 2)]
-    (if (> a b) 1 (if (> b a) 2 0))))
+  (let [oa (opening-count facts 1)
+        ob (opening-count facts 2)]
+    (if (> oa ob)
+      1
+      (if (> ob oa)
+        2
+        (let [a (known-plays facts 1)
+              b (known-plays facts 2)]
+          (if (> a b) 1 (if (> b a) 2 0)))))))
 
 ;; entities: every revealed card, once, with owner and the zone it first appeared in.
 ;; ("DECK"/"HAND" first zone = part of that player's deck; PLAY/SETASIDE... = created by effects.)

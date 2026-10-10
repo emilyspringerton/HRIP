@@ -48,7 +48,22 @@ slot); abandoned games (next `CREATE_GAME` with no `STATE=COMPLETE`) emit `compl
   `-Wframe-larger-than=512`); the host itself keeps no stack buffers.
 
 ## `me` (local player)
-Undrawn deck cards are never logged, so there is no "whole deck at start" signal. Instead: the
-local client knows its own card ids, so the `BLOCK_START ... cardId=` of the player's own plays is
-filled in while the opponent's is blank until revealed. `me` = the slot with more known-id plays
-(correct on all 5 real games; 0 when a game has no plays yet).
+Undrawn deck cards are never in `Power.log`, so `me` comes from what only the local client sees:
+the **opening hand** (deck-origin cards revealed by turn 1; the opponent's hand stays hidden), with
+known-id plays as the fallback. Correct on all 5 recorded games and on a live game (a pseudo-play,
+`TIME_EVENT_*`, had fooled the old play-only signal). 0 when nothing is revealed yet.
+
+## Where the deck comes from: `Decks.log` (not memory)
+Hearthstone logs the queued deck itself to `Logs\Hearthstone_*\Decks.log` (enabled by the `[Decks]`
+section already in `log.config`):
+
+```
+I 20:53:40 Finding Game With Deck:
+I 20:53:40 ### A3VTR
+I 20:53:40 # Deck ID: 3380012604
+I 20:53:40 AAECAZICBpigBODAB4TEB4jdB7Hj...      <- standard deck code
+```
+Also, at login, every deck ("Deck Contents Received", name + id + deck code). So: decode the code
+(IDUNA already has the decoder), map dbf ids to card ids via `hs_cards.card_id`, and
+`cards left = deck - own deck-origin entities that left DECK`. Verified live on a game in progress.
+(An earlier note here said the logs carry no decklist; that was wrong: `Power.log` doesn't, `Decks.log` does.)
