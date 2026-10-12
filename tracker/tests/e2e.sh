@@ -25,4 +25,21 @@ chk "duplicate CREATE_GAME: not aborted"          "$last2" '"complete":0'
 chk "duplicate CREATE_GAME: own card survives"    "$last2" '"id":21,"player":1,"card":"RLK_708","card0":"RLK_708","zone0":"DECK"'
 chk "duplicate CREATE_GAME: own draw recorded"    "$last2" '\["z",1,21,1,"RLK_708","HAND"\]'
 
+# Regression (2026-10-12): Hearthstone also logs STATE=COMPLETE twice (GameState, then an indented
+# PowerTaskList duplicate preceded by its own short re-statement of a few end-of-game tags), the exact
+# same shape as the CREATE_GAME duplicate above. host.c folds whatever text trails the real game's own
+# end into a FRESH game state; before this fix that fresh state's STATE=COMPLETE (from the trailing
+# duplicate) printed a second, near-empty phantom record, which the live page's `last record wins`
+# read showed instead of the real result -- full deck, nothing drawn, "waiting for your opening hand."
+# This fixture is a real, verbatim two-part excerpt of the same founder game as the fixture above (a
+# later point in it): the first 900 lines are CREATE_GAME through the opening mulligan and real turn-1
+# draws; the last 60 are the real end of that same game, both STATE=COMPLETE copies included. The
+# ~15,000 lines of ordinary mid-game play between those two windows were cut only to keep the fixture
+# small -- completion is driven by the STATE=COMPLETE lines, not turn count, so the cut does not affect
+# whether this regression reproduces.
+out3="$("$BIN" "$DIR/real_duplicate_state_complete.log" --live)"
+chk "duplicate STATE=COMPLETE: one record emitted"  "$(printf '%s\n' "$out3" | wc -l)" '^1$'
+chk "duplicate STATE=COMPLETE: real result kept"    "$out3" '"complete":1,"me":1'
+chk "duplicate STATE=COMPLETE: own entities kept"   "$out3" '"player":1,"card":"'
+
 exit $fail
