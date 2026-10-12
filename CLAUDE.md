@@ -1,5 +1,14 @@
 # HRIP — Hearthstone Rip
 
+**Doc debt, corrected 2026-10-12 while fixing a live bug in it:** `tracker/` is real, built code,
+not "no code yet" (that line below describes the asset-rip app only, a separate, still-unbuilt
+piece of this repo). `tracker/{power_log,game_state}.prn` + `host.c` is the real PARENA+C Power.log
+parser behind WOTAN's live Hearthstone deck tracker -- vendored into `IDUNA/internal/hstracker/src`
+(same per-consuming-repo convention as `internal/nock/parena_runtime`), built on first use with the
+image's own `parena` + gcc. `make -C tracker test` runs its own real e2e suite (`tracker/tests/
+e2e.sh`, a real captured log excerpt) against a local build. Keep this directory in sync with
+IDUNA's vendored copy by hand when either one changes -- there is no automated sync.
+
 New repo (2026-10-09), NORTHSTAR only — no code yet, local repo (no upstream yet). Purpose: a
 pure-PARENA, batteries-included Windows app that extracts Hearthstone's own card data from a real
 local install (Unity AssetBundles under `Program Files\...\Hearthstone\Data\Win\`) and emits JSON
