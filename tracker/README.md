@@ -107,6 +107,26 @@ redirect hands back. The token it ends up holding is scoped to exactly one permi
 `hs.live.upload`, and expires in 12 hours: it can POST log lines to the caller's own tracker
 session and nothing else — it cannot act as that IDUNA identity anywhere else.
 
+**Upload key (optional, 2026-10-12, WOTAN identity federation).** Instead of the browser sign-in, the
+uplink can use a long-lived **upload key** (`wt_...`, created under Account settings on WOTAN, shown once,
+stored server-side only as a hash, scoped to `hs.live.upload`, revocable). At start it exchanges the key
+(`POST /api/v1/hs/live/exchange {"key":...}` returning `{token, tags_linked}`) for the same 12-hour upload token
+the browser flow produces, so the rest of the loop is unchanged; a 401 re-exchanges the key rather than opening the
+browser. Parameters: `-Key '<key>'` (use it for this run), `-Key '<key>' -SaveKey` (also store it),
+`-SaveKey` alone (prompts with a hidden input, so the key never lands in shell history, then stores it), and
+`-ForgetKey` (delete the stored key). A stored key lives in `%APPDATA%\WOTAN\upload-key.dat`, encrypted with
+Windows DPAPI (`ConvertFrom-SecureString`): only the same Windows user on the same PC can decrypt it. The Desktop
+shortcut passes no key, so after a one-time `-SaveKey` it just works. A rejected key (revoked) falls back to the
+browser sign-in with a message. Games are only attributed when the BattleTag in the log matches a BattleTag linked
+to the account; others are counted per key as "rejected: BattleTag not linked" in Account settings. The script still
+prints `Syncing to: ...` and never sends a club id (the server decides routing).
+
+*Where the script lives:* the uplink and installer are served by IDUNA from string constants in
+`IDUNA/internal/http/handlers/hs_live.go` (`hsUplinkScript`), not from this repo. The key-exchange change is kept
+here as `uplink/uplink-key.patch` (unified diff against that file; `patch --dry-run -p0 hs_live.go < uplink-key.patch`
+was clean when written). It is **not applied** and **PowerShell has not been run**: the change was checked by
+structure only (balanced braces, expected parameters/URLs present, no backticks that would break the Go raw string).
+
 **One file it edits: `client.config`.** Hearthstone stops writing `Power.log` at about 10 MB (2-3
 games) unless `client.config` next to `Hearthstone.exe` has `FileSizeLimit.Int=-1` (the same key
 HDT and Firestone set — see the cap section above). The script adds that one line if it is
