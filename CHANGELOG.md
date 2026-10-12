@@ -1,4 +1,5 @@
 ## 2026-10-12
+- docs(tracker): added full PC-side rundown of the WOTAN PowerShell uplink script to tracker/README.md (sign-in/token scope, client.config edit, what log data is sent and filtered, retry/undo) (sess-20261009-1745-ee80b668)
 - fix(tracker): duplicate STATE=COMPLETE logging spawned a phantom empty record right after every game (sess-20261009-1745-ee80b668)
 - fix(tracker): duplicate CREATE_GAME (GameState + indented PowerTaskList copy, same instant) fractured every live game a few hundred lines in, hiding the player's own drawn cards for the rest of the match; fold-text now trusts only GameState's own CREATE_GAME to abort; tests/e2e.sh extended against a new real fixture (testdata/real_duplicate_create_game.log); resynced with IDUNA's vendored copy (sess-20261009-1745-ee80b668)
 
